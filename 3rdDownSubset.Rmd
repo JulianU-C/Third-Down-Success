@@ -1,0 +1,62 @@
+---
+title: "3rdDownSubset"
+author: "JUC"
+date: "`r Sys.Date()`"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+This is a subst of all the 3rd downs from the NFL season, for now it's just the Carolina Panthers 2023 season. Going to try glm and knn?
+
+```{r, echo=FALSE, warning=FALSE}
+# load library
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+# Insert dataset
+setwd("C:/Users/Owner/Desktop")
+
+third <- read.csv("3rdDown.csv")
+
+```
+
+```{r}
+# response is conversion
+# need to add conversion success column
+thirdDown <- third %>%
+  mutate(success = NA) %>%
+  mutate(success = ifelse(is.na(success), yardsGained > dist ))
+
+attach(thirdDown)
+```
+
+```{r}
+# plot the data, how does it look
+
+ggplot(data = thirdDown, aes(x = dist, 
+                             y = gameNum,
+                             colour = success,
+                             shape = fieldSide)) + 
+  geom_point(size = 2)
+
+```
+
+```{r}
+
+```
+
+
+
+```{r}
+logreg <- glm(success ~ dist + yardLine + quarter + gameNum + fieldSide , 
+               data = thirdDown, family = "binomial")
+
+summary(logreg)
+
+reduced <- glm(success ~ dist + yardLine + fieldSide,
+               data = thirdDown, family = "binomial")
+
+summary(reduced)
+```
+

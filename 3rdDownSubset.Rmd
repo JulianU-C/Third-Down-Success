@@ -1,0 +1,143 @@
+---
+title: "3rdDownSubset"
+author: "Julian U-C"
+date: "`r Sys.Date()`"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+This is a subset of all the 3rd downs from the NFL season, for now it's just the Carolina Panthers 2023 season. Going to try all the methods, why not?
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+# load library
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+# Insert dataset
+setwd("C:/Users/Owner/Desktop")
+
+third <- read.csv("3rdDown.csv")
+
+```
+
+<br>
+
+### Data manipulation
+
+I need to add a column for conversion success, that will be our response. This is simple, is the yards gained on 3rd down > distance to 1st down? I'll also add a column qtrWindow, which will tell us if the 3rd down was at the end, middle, or start of the quarter. Just using time would add too many parameters. I'm not sure how R uses time, but we just need the minutes and can give window 0-5, 5-10, and 10-15 for end, middle, start, respectively. Also change quarter to a factor!
+```{r, warning=FALSE}
+thirdDown <- third %>%
+  mutate(success = NA, qtrWindow = NA) %>%
+  mutate(success = ifelse(is.na(success), yardsGained > dist )) %>% 
+  separate(time, into = c("minutes", "seconds"),
+           sep = ":", fill = "right") %>%
+  mutate(minutes = as.numeric(minutes),
+         seconds = as.numeric(seconds),
+         quarter = as.factor(quarter)) %>%
+  mutate(qtrWindow = case_when(
+    minutes < 5 ~ "end",
+    minutes >= 5 & minutes < 10 ~ "middle",
+    minutes >= 10 ~ "start",
+    TRUE ~ NA_character_)) %>%
+  mutate(qtrWindow = factor(qtrWindow, levels = c("start", "middle", "end")))
+
+# make sure everything looks okay
+str(thirdDown)
+
+# I want to save this
+#write.csv(thirdDown, file = "thirdDownR.csv", row.names = FALSE)
+```
+
+*We have some parameters we can ignore when we are modeling:* time, minutes, seconds were only used to create qtrWindow factor, which is our stand in for time. yardsGained also doesn't matter since it happened after the fact, it does not influence the 3rd down it occurred in (or so I think!). gameDate = gameNum, again IDK how to manage time in R (no pun intended). outcome I may be able to use at a later stage! down... I mean we know what down it is brother. I'm going to remove these to have a cleaner dataframe.
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+thirdDown <- thirdDown %>% 
+  select(gameNum, quarter, dist, fieldSide, yardLine, success, qtrWindow)
+
+```
+
+<br>
+
+**Basic scatter plot of the data**
+```{r}
+# plot the data, how does it look
+# can also use attach() function so you don't have to call the data each time
+
+# Game number vs. conversion distance
+ggplot(data = thirdDown, aes(x = dist, 
+                             y = gameNum,
+                             colour = success,
+                             shape = fieldSide)) + 
+  geom_point(size = 2)
+
+# Let's look at conversions per quarter
+ggplot(data = thirdDown, aes(x = dist, 
+                             y = gameNum,
+                             colour = success,
+                             shape = fieldSide)) + 
+  geom_point(size = 2) +
+  facet_wrap(~ quarter)
+```
+
+**Quick summary statistics**
+```{r}
+summary(thirdDown)
+```
+
+*Just from a superficial look at the data:*
+
+More third downs occurred in the 2nd (85) and 4th (83) quarters
+
+- maybe more likely to get to 4th down and kick a field goal to go into half/OT/win?
+
+Mean 3.5 yards gained per 3rd down
+
+- would be interesting to see how that varies by quarter?
+
+
+### Linear model
+
+Assumptions of linear model: response and predictors are linear? additive assumption (effects of changes in X~j~ on Y is independent of the other predictors). Homoscedasticity (constant variance). Usually assumes a continuous response, so not recommended for my data.
+
+Assessing fit: adjusted R^2^
+
+Will need to have some dummy variables for quarter and qtrWindow. Let's start with the full model and work back.
+
+```{r}
+# full model
+lmFull <- lm(success ~ ., data = thirdDown)
+
+summary(lmFull)
+```
+
+Oh shit man, Adjusted R^2^ of 0.1135, think it's save to say linear model ain't it! Only parameters that appear significant are distance, field side, and yard line. That makes sense to me. 
+```{r}
+par(mfrow = c(2, 2))
+plot(lmFull)
+```
+
+**Linear model is cooked** Residuals vs Fitted plots suggests heteroscedasticity (unequal variances of residuals) also parallel because my response is binary (success/fail), S-shaped QQ plot = not normal distribution. Was coo lto practice though.
+
+<br>
+
+### Logistic model
+
+This one I have more faith in. 
+
+```{r}
+glmFull <- glm(success ~ ., data = thirdDown, family = binomial)
+summary(glmFull)
+```
+
+OK, similar to linear model only a few variables are significant (distance, field side, and yard line) 
+
+```{r}
+# Generate probabilities of success according to glm
+glmProb <- predict(glmFull, type = "response")
+#contrasts(success)
+
+# quick summary of the probabilities
+# average 27% conversion success prob., highest was 70%
+summary(glmProb)
+```
+Next step is to calculate classification error rate, to do so we need to get the 2024 season to test (should be similar since Panthers still suck!)
